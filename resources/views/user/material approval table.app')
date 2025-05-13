@@ -1,0 +1,292 @@
+@extends('layouts.app')
+
+@section('content')
+<div class="container-fluid my-4">
+    <div class="card shadow">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3">
+            <h3 class="m-0 font-weight-bold">Materials Request Approval</h3>
+            <button class="btn btn-light" data-bs-toggle="modal" data-bs-target="#filterModal">
+            <i class="fas fa-filter"></i> Filter Approval Request
+            </button>
+        </div>
+
+        <div class="card-body">
+            @if(session('success'))
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+            @if(session('error'))
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    {{ session('error') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            @endif
+
+            <div class="mb-3">
+                <input type="text" id="searchInput" class="form-control" placeholder="Search requests...">
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Request No</th>
+                            <th>Request Name</th>
+                            <th>Date</th>
+                            <th>Priority</th>
+                            <th>Status</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($approval as $approval)
+                            @php
+                                $statusColor = match($approval->status) {
+                                    'approved' => 'success',
+                                    'pending' => 'warning',
+                                    'rejected' => 'danger',
+                                    default => 'success'
+                                };
+                                
+                                $priorityColor = match($approval->priority) {
+                                    'High' => 'danger',
+                                    'Medium' => 'warning',
+                                    'Low' => 'info',
+                                    'Urgent' => 'dark',
+                                    default => 'success'
+                                };
+                            @endphp
+                            <tr>
+                                <td>{{ $approval->request_number ?? 'MR-'.str_pad($approval->id, 4, '0', STR_PAD_LEFT) }}</td>
+                                <td>{{ $approval->request_name }}</td>
+                                <td>{{ $approval->request_date ? \Carbon\Carbon::parse($approval->request_date)->format('Y-m-d') : 'N/A' }}</td>
+                                <td><span class="badge bg-{{ $priorityColor }}">{{ $approval->priority ?? 'Normal' }}</span></td>
+                                <td><span class="badge bg-{{ $statusColor }}">{{ ucfirst($approval->status) }}</span></td>
+                                <td class="text-center">
+                                    <button class="btn btn-primary btn-sm view-details" data-id="{{ $approval->id }}">
+                                       Details
+                                    </button>
+                                   
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="text-center py-4">
+                                    <i class="fas fa-inbox fa-2x text-muted mb-3"></i>
+                                    <p class="text-muted">No material requests found</p>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Request Modal -->
+<div class="modal fade" id="addRequestModal" tabindex="-1" aria-labelledby="addRequestModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="addRequestModalLabel">Request New Material</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="requestForm" action="{{ route('user.material_request.store') }}" method="POST">
+                @csrf
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="request_name" class="form-label">Request Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="request_name" name="request_name" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="request_number" class="form-label">Request Number</label>
+                            <input type="text" class="form-control" id="request_number" name="request_number" placeholder="Will be generated if empty">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="priority" class="form-label">Priority <span class="text-danger">*</span></label>
+                            <select class="form-select" id="priority" name="priority" required>
+                                <option value="Low">Low</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="High">High</option>
+                                <option value="Urgent">Urgent</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="request_date" class="form-label">Request Date <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="request_date" name="request_date" value="{{ date('Y-m-d') }}" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Materials <span class="text-danger">*</span></label>
+                        <div id="materials-container">
+                            <div class="row mb-2 material-item">
+                                <div class="col-md-7">
+                                    <input type="text" class="form-control" name="items[0][product]" placeholder="Material Name" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="number" class="form-control" name="items[0][quantity]" placeholder="Quantity" min="1" value="1" required>
+                                </div>
+                                <div class="col-md-1">
+                                    <button type="button" class="btn btn-danger remove-material-btn" disabled>
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-info mt-2" id="add-material-btn">
+                            <i class="fas fa-plus"></i> Add Another Material
+                        </button>
+                    </div>
+                    <div class="mb-3">
+                        <label for="notes" class="form-label">Notes</label>
+                        <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Submit Request</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- Modal Filter -->
+<div class="modal fade" id="filterModal" tabindex="-1" aria-labelledby="filterModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form action="{{ route('user.material_approval') }}" method="GET">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="filterModalLabel">Filter Material Request Approval by Date</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="start_date" class="form-label">Start Date</label>
+            <input type="date" class="form-control" name="start_date" id="start_date" value="{{ request('start_date') }}">
+          </div>
+          <div class="mb-3">
+            <label for="end_date" class="form-label">End Date</label>
+            <input type="date" class="form-control" name="end_date" id="end_date" value="{{ request('end_date') }}">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-success">Filter</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+<!-- View Details Modal -->
+<div class="modal fade" id="viewDetailsModal" tabindex="-1" aria-labelledby="viewDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="viewDetailsModalLabel">Request Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="requestDetailsContent">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading request details...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Material row functionality
+    let materialIndex = 0;
+    
+    document.getElementById('add-material-btn').addEventListener('click', function() {
+        materialIndex++;
+        const newRow = document.createElement('div');
+        newRow.className = 'row mb-2 material-item';
+        newRow.innerHTML = `
+            <div class="col-md-7">
+                <input type="text" class="form-control" name="items[${materialIndex}][product]" placeholder="Material Name" required>
+            </div>
+            <div class="col-md-4">
+                <input type="number" class="form-control" name="items[${materialIndex}][quantity]" placeholder="Quantity" min="1" value="1" required>
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-danger remove-material-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        document.getElementById('materials-container').appendChild(newRow);
+        
+        // Add event listener to the new remove button
+        newRow.querySelector('.remove-material-btn').addEventListener('click', function() {
+            this.closest('.material-item').remove();
+        });
+    });
+    
+    // Search functionality
+    document.getElementById('searchInput').addEventListener('keyup', function() {
+        const searchTerm = this.value.toLowerCase();
+        const tableRows = document.querySelectorAll('tbody tr');
+        
+        tableRows.forEach(function(row) {
+            const rowText = row.textContent.toLowerCase();
+            if (rowText.includes(searchTerm)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+    
+    // View Details Modal
+    const viewDetailsButtons = document.querySelectorAll('.view-details');
+    const viewDetailsModal = new bootstrap.Modal(document.getElementById('viewDetailsModal'));
+    
+    viewDetailsButtons.forEach(function(button) {
+        button.addEventListener('click', function() {
+            const requestId = this.getAttribute('data-id');
+            
+            // Show loading spinner
+            document.getElementById('requestDetailsContent').innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading request details...</p>
+                </div>
+            `;
+            
+            // Show the modal
+            viewDetailsModal.show();
+            
+            // Fetch request details
+            fetch('{{ route('user.material_request.details', '') }}/' + requestId)
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById('requestDetailsContent').innerHTML = data;
+                })
+                .catch(error => {
+                    document.getElementById('requestDetailsContent').innerHTML = 
+                        '<div class="alert alert-danger">Error loading request details. Please try again.</div>';
+                });
+        });
+    });
+});
+</script>
+@endsection
